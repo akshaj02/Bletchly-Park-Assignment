@@ -97,7 +97,6 @@ void * decryptor_thread( void * args )
     memset( output_filename, 0, MAX_FILENAME_LENGTH ) ;
 
     removeMessage( message );
-    sem_post(&buffer_sema);
     
 
 
@@ -114,6 +113,9 @@ void * decryptor_thread( void * args )
     free( input_filename ) ;
     free( output_filename ) ;
     free( message ) ;
+    sem_post(&buffer_sema);
+
+    
   }
 }
 
