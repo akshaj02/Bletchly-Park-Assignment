@@ -9,7 +9,7 @@
 #include "clock.h"
 #include <semaphore.h>
 
-#define MAX_NUM_THREADS 1024 
+#define MAX_NUM_THREADS 10
 #define MAX_FILENAME_LENGTH 255
 #define BUFFER_SIZE 148
 
@@ -21,11 +21,9 @@ pthread_t message_receiver_tid ;
 pthread_t decryptor_tid[ MAX_NUM_THREADS ] ;
 
 
-//semapthore declaration
 sem_t count_sema;
-sem_t buffer_sema;
-
-
+sem_t encrypt_sema;
+sem_t decrypt_sema;
 
 static void handleSIGUSR2( int sig )
 {
@@ -36,12 +34,13 @@ static void handleSIGUSR2( int sig )
 int insertMessage( char * message )
 {
   //protect the buffer with a mutex
-  //sem_wait(&count_sema);
   assert( count < BUFFER_SIZE && "Tried to add a message to a full buffer");
+  // sem_wait(&count_sema);
   strncpy( message_buffer[count] , message, MAX_FILENAME_LENGTH ); 
+  
+  sem_wait(&count_sema);
   count++;
-  //sem_post(&count_sema);
-  // pthread_mutex_unlock( &buffer_mutexA ) ;
+  sem_post(&count_sema);
 
   return 0;
 }
@@ -49,9 +48,11 @@ int insertMessage( char * message )
 int removeMessage( char *message )
 {   
   //protect the buffer with a mutex
-  sem_wait(&count_sema);
   assert( count && "Tried to remove a message from an empty buffer");
+  // sem_wait(&count_sema);
   strncpy( message, message_buffer[count-1], MAX_FILENAME_LENGTH ); 
+
+  sem_wait(&count_sema);
   count--;
   sem_post(&count_sema);
 
@@ -68,14 +69,13 @@ void * receiver_thread( void * args )
 {
   while( running )
   {
+    sem_wait(&encrypt_sema);
     char * message_file = retrieveReceivedMessages( );
 
-    //protect the buffer
     if( message_file )
     {
-      //sem_wait(&buffer_sema);
       insertMessage( message_file ) ;
-      //sem_post(&buffer_sema);
+      sem_post(&decrypt_sema);
     }
   }
 }
@@ -85,16 +85,16 @@ void * decryptor_thread( void * args )
 
   while( running )
   { 
+    sem_wait(&decrypt_sema);
     char * input_filename  = ( char * ) malloc ( sizeof( char ) * MAX_FILENAME_LENGTH ) ;
     char * output_filename  = ( char * ) malloc ( sizeof( char ) * MAX_FILENAME_LENGTH ) ;
     char * message = ( char * ) malloc ( sizeof( char ) * MAX_FILENAME_LENGTH ) ;
-
     
     //protect the buffer
-    sem_wait(&buffer_sema);
     memset( message,         0, MAX_FILENAME_LENGTH ) ;
     memset( input_filename,  0, MAX_FILENAME_LENGTH ) ;
     memset( output_filename, 0, MAX_FILENAME_LENGTH ) ;
+
 
     removeMessage( message );
     
@@ -108,14 +108,15 @@ void * decryptor_thread( void * args )
     output_filename[ strlen( output_filename ) - 8 ] = '\0';
     strcat ( output_filename, ".txt" );
 
+
     decryptFile( input_filename, output_filename );
+
 
     free( input_filename ) ;
     free( output_filename ) ;
     free( message ) ;
-    sem_post(&buffer_sema);
 
-    
+    sem_post(&encrypt_sema);
   }
 }
 
@@ -129,8 +130,10 @@ int main( int argc, char * argv[] )
     int num_threads = atoi( argv[1] ) ;
     pthread_t tid[ MAX_NUM_THREADS ] ;
 
-    sem_init(&count_sema, 0, 1);
-    sem_init(&buffer_sema, 0, num_threads);
+    sem_init(&count_sema, 0, 0);
+    sem_init(&encrypt_sema, 0, num_threads);
+    sem_init(&decrypt_sema, 0, 0);
+
 
     // initialize the message buffer
     int i ;
