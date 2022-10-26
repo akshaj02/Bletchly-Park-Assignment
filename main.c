@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <signal.h>
 #include "clock.h"
+#include <semaphore.h>
 
 #define MAX_NUM_THREADS 1024 
 #define MAX_FILENAME_LENGTH 255
@@ -19,6 +20,14 @@ static int running = 1 ;
 pthread_t message_receiver_tid ;
 pthread_t decryptor_tid[ MAX_NUM_THREADS ] ;
 
+//mutex for the buffer
+pthread_mutex_t buffer_mutexA;
+pthread_mutex_t buffer_mutexB;
+
+//semapthore declaration
+sem_t lethalEncryptProtector;
+sem_t lethalDecryptProtector;
+
 static void handleSIGUSR2( int sig )
 {
   printf("Time to shutdown\n");
@@ -27,18 +36,24 @@ static void handleSIGUSR2( int sig )
 
 int insertMessage( char * message )
 {
+  //protect the buffer with a mutex
   assert( count < BUFFER_SIZE && "Tried to add a message to a full buffer");
   strncpy( message_buffer[count] , message, MAX_FILENAME_LENGTH ); 
+  pthread_mutex_lock( &buffer_mutexA ) ;
   count++;
-  
+  // pthread_mutex_unlock( &buffer_mutexA ) ;
+
   return 0;
 }
 
 int removeMessage( char *message )
-{
+{   
+  //protest the buffer with a mutex
   assert( count && "Tried to remove a message from an empty buffer");
   strncpy( message, message_buffer[count-1], MAX_FILENAME_LENGTH ); 
+  // pthread_mutex_lock( &buffer_mutexA );
   count--;
+  pthread_mutex_unlock( &buffer_mutexA );
 
   return 0;
 }
@@ -48,32 +63,40 @@ static void * tick ( void )
    return NULL ;
 }
 
+// FIXXXXXXXX
 void * receiver_thread( void * args )
 {
   while( running )
   {
     char * message_file = retrieveReceivedMessages( );
-
+    //protect the buffer
+    sem_wait(&lethalEncryptProtector);
     if( message_file )
     {
       insertMessage( message_file ) ;
     }
+    sem_post(&lethalEncryptProtector);
   }
 }
-
+// FIXXXXXXXX
 void * decryptor_thread( void * args )
 {
+
   while( running )
-  {
+  { 
     char * input_filename  = ( char * ) malloc ( sizeof( char ) * MAX_FILENAME_LENGTH ) ;
     char * output_filename  = ( char * ) malloc ( sizeof( char ) * MAX_FILENAME_LENGTH ) ;
     char * message = ( char * ) malloc ( sizeof( char ) * MAX_FILENAME_LENGTH ) ;
+
+    
 
     memset( message,         0, MAX_FILENAME_LENGTH ) ;
     memset( input_filename,  0, MAX_FILENAME_LENGTH ) ;
     memset( output_filename, 0, MAX_FILENAME_LENGTH ) ;
 
     removeMessage( message );
+    
+
 
     strncpy( input_filename, "ciphertext/", strlen( "ciphertext/" ) ) ;
     strcat ( input_filename, message );
@@ -88,17 +111,23 @@ void * decryptor_thread( void * args )
     free( input_filename ) ;
     free( output_filename ) ;
     free( message ) ;
+    sem_post(&lethalDecryptProtector);
   }
 }
 
 int main( int argc, char * argv[] )
 {
+
     if( argc != 2 )
     {
       printf("Usage: ./a.out [number of threads]\n") ;
     }
     int num_threads = atoi( argv[1] ) ;
     pthread_t tid[ MAX_NUM_THREADS ] ;
+
+    //semapthore initialization
+    sem_init(&lethalEncryptProtector, 0, num_threads);
+    sem_init(&lethalDecryptProtector, 0, num_threads);
 
     // initialize the message buffer
     int i ;
