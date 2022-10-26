@@ -1,3 +1,6 @@
+//Akshaj Murhekar
+//1001752757
+
 #include "include/crypto.h"
 #include "schedule.h"
 #include <pthread.h>
@@ -52,7 +55,6 @@ int removeMessage( char *message )
   //lock the count variable so that only one thread can access it at a time
   //assert and strncpy are both protected by the mutex
   //count-- is also protected
-
   pthread_mutex_lock(&count_mutex);
   assert( count && "Tried to remove a message from an empty buffer");
   strncpy( message, message_buffer[count-1], MAX_FILENAME_LENGTH ); 
